@@ -2,19 +2,20 @@ from __future__ import absolute_import
 
 import tensorflow as tf
 import numpy as np
+import os
 from tensorflow.examples.tutorials.mnist import input_data
 
 n_input = 784   # 输入的维度(img shape: 28×28)
 n_classes = 10    # 标记的维度 (0-9 digits)
 learning_rate = 0.001 #
 
-training_iters = 200000
+training_iters = 128*10
 batch_size = 128
 display_step = 10
 
 dropout = 0.75 # Dropout 的概率，输出的可能性
 
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+mnist = input_data.read_data_sets("../MNIST_data/", one_hot=True)
 
 x = tf.placeholder(dtype=tf.float32, shape=[None, 784])
 y = tf.placeholder(dtype=tf.float32, shape=[None, 10])
@@ -64,7 +65,7 @@ biases = {
 def alex_net(x, weights, biases, dropout):
     #reshape
     x = tf.reshape(x, [-1, 28, 28, 1])
-
+    print(weights["wc1"], biases["bc1"])
     #first conv
     conv1 = conv2d("conv1", x, weights['wc1'], biases['bc1'])
     pool1 = maxpool2d("pool1", conv1, k=2)
@@ -89,7 +90,7 @@ def alex_net(x, weights, biases, dropout):
     # 第四层卷积
     conv4 = conv2d('conv4', norm3, weights['wc4'], biases['bc4'])
     # 第五层卷积
-    conv5 = conv2d('conv5', norm3, weights['wc5'], biases['bc5'])
+    conv5 = conv2d('conv5', conv4, weights['wc5'], biases['bc5'])
     # 下采样
     pool5 = maxpool2d('pool5', conv5, k=2)
     # 规范化
@@ -116,166 +117,53 @@ def alex_net(x, weights, biases, dropout):
 # 构建模型
 pred = alex_net(x, weights, biases, keep_prob)
 # 定义损失函数和优化器
-cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred,labels=y))
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=pred))
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
 # 评估函数
 correct_pred = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+global_step = tf.Variable(0, name="global_step", trainable=False)
+
+
+saver = tf.train.Saver()
+
+model_data = "./model_data"
+if not os.path.exists(model_data):
+    os.makedirs(model_data)
+
 
 # 初始化变量
 init = tf.global_variables_initializer()
+##保存AlexNet模型###########################
 with tf.Session() as sess:
     sess.run(init)
+    start = global_step.eval()  # 得到 global_step 的初始值
+    print("start from : ", start)
     step = 1
     # 开始训练，直到达到 training_iters，即 200000
     while step * batch_size < training_iters:
         batch_x, batch_y = mnist.train.next_batch(batch_size)
         sess.run(optimizer, feed_dict={x: batch_x, y: batch_y, keep_prob: dropout})
-        if step % display_step == 0:
-            # 计算损失值和准确度，输出
-            loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
-            print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
-                    "{:.6f}".format(loss) + ", Training Accuracy= " + \
-                        "{:.5f}".format(acc))
+        #if step % display_step == 0:
+        # 计算损失值和准确度，输出
+        loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
+        print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
+                "{:.6f}".format(loss) + ", Training Accuracy= " + \
+                    "{:.5f}".format(acc))
         step += 1
+        global_step.assign(step).eval()  #更新计数器
+        saver.save(sess, model_data+"/model.ckpt", global_step=global_step)
     print("Optimization Finished!")
-
-
-'''
-A Convolutional Network implementation example using TensorFlow library.
-This example is using the MNIST database of handwritten digits
-(http://yann.lecun.com/exdb/mnist/)
-
-Author: Aymeric Damien
-Project: https://github.com/aymericdamien/TensorFlow-Examples/
-'''
-#
-#
-# from __future__ import print_function
-#
-# import tensorflow as tf
-#
-# # Import MNIST data
-# from tensorflow.examples.tutorials.mnist import input_data
-# mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
-#
-# # Parameters
-# learning_rate = 0.001
-# training_iters = 128*10*3
-# batch_size = 128
-# display_step = 10
-#
-# # Network Parameters
-# n_input = 784 # MNIST data input (img shape: 28*28)
-# n_classes = 10 # MNIST total classes (0-9 digits)
-# dropout = 0.75 # Dropout, probability to keep units
-#
-# # tf Graph input
-# x = tf.placeholder(tf.float32, [None, n_input])
-# y = tf.placeholder(tf.float32, [None, n_classes])
-# keep_prob = tf.placeholder(tf.float32) #dropout (keep probability)
-#
-#
-# # Create some wrappers for simplicity
-# def conv2d(x, W, b, strides=1):
-#     # Conv2D wrapper, with bias and relu activation
-#     x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
-#     x = tf.nn.bias_add(x, b)
-#     return tf.nn.relu(x)
-#
-#
-# def maxpool2d(x, k=2):
-#     # MaxPool2D wrapper
-#     return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
-#                           padding='SAME')
-#
-#
-# # Create model
-# def conv_net(x, weights, biases, dropout):
-#     # Reshape input picture
-#     x = tf.reshape(x, shape=[-1, 28, 28, 1])
-#
-#     # Convolution Layer
-#     conv1 = conv2d(x, weights['wc1'], biases['bc1'])
-#     # Max Pooling (down-sampling)
-#     conv1 = maxpool2d(conv1, k=2)
-#
-#     # Convolution Layer
-#     conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
-#     # Max Pooling (down-sampling)
-#     conv2 = maxpool2d(conv2, k=2)
-#
-#     # Fully connected layer
-#     # Reshape conv2 output to fit fully connected layer input
-#     fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
-#     fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
-#     fc1 = tf.nn.relu(fc1)
-#     # Apply Dropout
-#     fc1 = tf.nn.dropout(fc1, dropout)
-#
-#     # Output, class prediction
-#     out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
-#     return out
-#
-# # Store layers weight & bias
-# weights = {
-#     # 5x5 conv, 1 input, 32 outputs
-#     'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
-#     # 5x5 conv, 32 inputs, 64 outputs
-#     'wc2': tf.Variable(tf.random_normal([5, 5, 32, 64])),
-#     # fully connected, 7*7*64 inputs, 1024 outputs
-#     'wd1': tf.Variable(tf.random_normal([7*7*64, 1024])),
-#     # 1024 inputs, 10 outputs (class prediction)
-#     'out': tf.Variable(tf.random_normal([1024, n_classes]))
-# }
-#
-# biases = {
-#     'bc1': tf.Variable(tf.random_normal([32])),
-#     'bc2': tf.Variable(tf.random_normal([64])),
-#     'bd1': tf.Variable(tf.random_normal([1024])),
-#     'out': tf.Variable(tf.random_normal([n_classes]))
-# }
-#
-# # Construct model
-# pred = conv_net(x, weights, biases, keep_prob)
-#
-# # Define loss and optimizer
-# cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
-# optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
-#
-# # Evaluate model
-# correct_pred = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
-# accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-#
-# # Initializing the variables
-# init = tf.global_variables_initializer()
-#
-# saver = tf.train.Saver()  ##保存的API
-# # Launch the graph
+#######恢复AlexNet模型#####################
 # with tf.Session() as sess:
 #     sess.run(init)
-#     step = 1
-#     # Keep training until reach max iterations
-#     while step * batch_size < training_iters:
-#         batch_x, batch_y = mnist.train.next_batch(batch_size)
-#         # Run optimization op (backprop)
-#         sess.run(optimizer, feed_dict={x: batch_x, y: batch_y,
-#                                        keep_prob: dropout})
-#         if step % display_step == 0:
-#             # Calculate batch loss and accuracy
-#             loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x,
-#                                                               y: batch_y,
-#                                                               keep_prob: 1.})
-#             print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
-#                   "{:.6f}".format(loss) + ", Training Accuracy= " + \
-#                   "{:.5f}".format(acc))
-#         step += 1
-#     print("Optimization Finished!")
-#     print("save model")
-#     save_path = saver.save(sess,"./model")  #保存模型
-#     print("save model:{0} Finished".format(save_path))
 #
-#     # Calculate accuracy for 256 mnist test images
-#     print("Testing Accuracy:",sess.run(accuracy, feed_dict={x: mnist.test.images[:256],
-#                                       y: mnist.test.labels[:256],
-#                                       keep_prob: 1.}))
+#     ckpt = tf.train.get_checkpoint_state(model_data)
+#     if ckpt and ckpt.model_checkpoint_path:
+#         print(ckpt.model_checkpoint_path)
+#         saver.restore(sess, ckpt.model_checkpoint_path)
+#     start = global_step.eval() # 得到 global_step 的初始值
+#     print("Start from:", start)
+#     acc = sess.run(accuracy, feed_dict= {x: mnist.test.images[:256], y: mnist.test.labels[:256], keep_prob: 1.0})
+#     print("Testing Accuracy = " + "{:.5f}".format(acc))
+
